@@ -1,12 +1,13 @@
 import bcrypt from "bcrypt"
-import { createUser, findAllUserByEmail, updateToken } from "../models/User.js";
+import { createUser, updateToken, findUserByEmail, findUserByTokenWithRelations } from "../models/User.js";
 import { findStateByName } from "../models/State.js";
+import jwt from 'jsonwebtoken';
 
 
 export const signup = async (req, res) => {
     try {
         const data = req.body;
-        const user = await findAllUserByEmail(data.email);
+        const user = await findUserByEmail(data.email);
         if (user) {
             res.status(500).json({
                 error: "Email already exists!",
@@ -39,11 +40,40 @@ export const signup = async (req, res) => {
     }
 };
 
+export const signinv2 = async (req, res) => {
+    try {
+        const data = req.body;
+        const user = await findUserByEmail(data.email);
+        if (!user) {
+            return res.status(500).json({
+                error: "Email or password invalid!",
+            });
+        }
+
+        const match = await bcrypt.compare(data.password, user.passwordHash)
+        if (!match) {
+            return res.status(500).json({
+                error: "Email or password invalid!",
+            });
+        }
+
+        const payload = { userId: user.id };
+        const token = jwt.sign(payload, 'senha', { expiresIn: '1h' });
+
+        await updateToken(user.id, token);
+        res.status(200).json({ userId: user.id, token });
+
+    } catch (error) {
+        res.status(500).json({ error: "Failed to log in", message: error.message });
+    }
+};
+
+
 export const signin = async (req, res) => {
     try {
         const data = req.body;
         //Verificar se o email existe
-        const user = await findAllUserByEmail(data.email);
+        const user = await findUserByEmail(data.email);
         if (!user) {
             res.status(500).json({error: "Email or password invalid" });
             return;
@@ -66,5 +96,25 @@ export const signin = async (req, res) => {
         res.status(200).json({userId: user.id, token});
     } catch (error) {
         res.status(500).json({error: 'Failed to log in', message: error.message})
+    }
+}
+
+export const info = async (req,res) => {
+    try {
+        let token = req.body.token;
+        const user = await findUserByTokenWithRelations(token);
+        let adList = [];
+        res.status(200).json({
+            name: user.name,
+            email: user.email,
+            state: user.state.name,
+            ads: adList,
+        });
+
+    } catch (error) {
+        res
+        .status(500)
+        .json({ error: "Failed to get info of the user", message: error.message });
+
     }
 }
